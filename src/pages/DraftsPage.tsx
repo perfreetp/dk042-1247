@@ -1,8 +1,9 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Plus, Calendar, User, Target, Package, Clock, ChevronRight,
   Send, Edit3, X, Save, Play, CheckCircle, FileText, Trash2,
-  ChevronDown, ChevronUp
+  ChevronDown, ChevronUp, Star, AlertTriangle, TrendingUp, XCircle
 } from 'lucide-react';
 import { useAppStore } from '@/store/useAppStore';
 import Modal from '@/components/Modal/Modal';
@@ -11,7 +12,7 @@ import {
   getRiskColor, getRiskText
 } from '@/utils/helpers';
 import type {
-  Draft, DraftStatus, ResourceRequirement, Metric
+  Draft, DraftStatus, ResourceRequirement, Metric, EvaluationDecision
 } from '@/types';
 
 const statusFilters: { value: DraftStatus | 'all'; label: string }[] = [
@@ -33,14 +34,18 @@ export default function DraftsPage() {
   const createDraft = useAppStore((state) => state.createDraft);
   const updateDraft = useAppStore((state) => state.updateDraft);
   const updateDraftStatus = useAppStore((state) => state.updateDraftStatus);
+  const submitEvaluation = useAppStore((state) => state.submitEvaluation);
   const getDraftById = useAppStore((state) => state.getDraftById);
   const getEvaluationByDraftId = useAppStore((state) => state.getEvaluationByDraftId);
   const getEvaluationsByDraftId = useAppStore((state) => state.getEvaluationsByDraftId);
+  
+  const navigate = useNavigate();
   
   const [selectedStatus, setSelectedStatus] = useState<DraftStatus | 'all'>('all');
   const [selectedDraftId, setSelectedDraftId] = useState<string | null>(null);
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [showEvaluateModal, setShowEvaluateModal] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [showEvalHistory, setShowEvalHistory] = useState(false);
   
@@ -52,6 +57,14 @@ export default function DraftsPage() {
     endDate: '',
     resourceRequirements: [] as ResourceRequirement[],
     metrics: [] as Metric[],
+  });
+  
+  const [evaluationForm, setEvaluationForm] = useState({
+    riskScore: 50,
+    resourceScore: 50,
+    benefitScore: 50,
+    decision: 'pending' as EvaluationDecision,
+    comment: '',
   });
   
   const [newDraft, setNewDraft] = useState({
@@ -72,6 +85,35 @@ export default function DraftsPage() {
     setShowDetailModal(true);
     setIsEditing(false);
     setShowEvalHistory(false);
+  };
+
+  const handleStartEvaluate = (draft: Draft) => {
+    const existingEvaluation = getEvaluationByDraftId(draft.id);
+    if (existingEvaluation) {
+      setEvaluationForm({
+        riskScore: existingEvaluation.riskScore,
+        resourceScore: existingEvaluation.resourceScore,
+        benefitScore: existingEvaluation.benefitScore,
+        decision: existingEvaluation.decision,
+        comment: existingEvaluation.comment,
+      });
+    } else {
+      setEvaluationForm({
+        riskScore: 50,
+        resourceScore: 50,
+        benefitScore: 50,
+        decision: 'pending',
+        comment: '',
+      });
+    }
+    setSelectedDraftId(draft.id);
+    setShowEvaluateModal(true);
+  };
+
+  const handleSubmitEvaluationFromDraft = () => {
+    if (!selectedDraftId) return;
+    submitEvaluation(selectedDraftId, evaluationForm);
+    setShowEvaluateModal(false);
   };
 
   const handleStartEdit = () => {
@@ -192,7 +234,13 @@ export default function DraftsPage() {
       case 'running':
         return { label: '标记完成', action: () => handleComplete(draft.id), icon: CheckCircle, show: true };
       case 'completed':
-        return { label: '去复盘', action: () => window.location.hash = '#/review', icon: FileText, show: true };
+        return {
+          label: '去复盘',
+          action: () => navigate(`/review?draftId=${draft.id}&action=edit`),
+          icon: FileText,
+          show: true,
+          isExternal: true,
+        };
       default:
         return null;
     }
@@ -266,16 +314,12 @@ export default function DraftsPage() {
                       {draft.description || '暂无描述'}
                     </p>
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap justify-end">
                     {nextAction?.show && (
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
-                          if (nextAction.label === '去复盘') {
-                            window.location.hash = '#/review';
-                          } else {
-                            nextAction.action();
-                          }
+                          nextAction.action();
                         }}
                         className="btn-primary text-sm py-2 px-3 flex items-center gap-1.5"
                       >
@@ -397,15 +441,28 @@ export default function DraftsPage() {
                     </span>
                   </div>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap justify-end">
                   {!isEditing && (
-                    <button
-                      onClick={handleStartEdit}
-                      className="btn-secondary text-sm py-2 px-3 flex items-center gap-1.5"
-                    >
-                      <Edit3 className="w-4 h-4" />
-                      编辑
-                    </button>
+                    <>
+                      {selectedDraft.status !== 'draft' && selectedDraft.status !== 'running' && selectedDraft.status !== 'completed' && (
+                        <button
+                          onClick={() => {
+                            if (selectedDraft) handleStartEvaluate(selectedDraft);
+                          }}
+                          className="btn-secondary text-sm py-2 px-3 flex items-center gap-1.5"
+                        >
+                          <Star className="w-4 h-4" />
+                          {latestEval ? '重新评估' : '评估'}
+                        </button>
+                      )}
+                      <button
+                        onClick={handleStartEdit}
+                        className="btn-secondary text-sm py-2 px-3 flex items-center gap-1.5"
+                      >
+                        <Edit3 className="w-4 h-4" />
+                        编辑
+                      </button>
+                    </>
                   )}
                   {isEditing && (
                     <>
@@ -616,20 +673,36 @@ export default function DraftsPage() {
               {latestEval && (
                 <div>
                   <div
-                    className="flex items-center justify-between mb-3 cursor-pointer"
-                    onClick={() => setShowEvalHistory(!showEvalHistory)}
+                    className="flex items-center justify-between mb-3"
                   >
-                    <h4 className="text-lg font-semibold text-white flex items-center gap-2">
-                      <FileText className="w-5 h-5 text-amber-400" />
-                      可行性评估
+                    <div
+                      className="flex items-center gap-2 cursor-pointer"
+                      onClick={() => setShowEvalHistory(!showEvalHistory)}
+                    >
+                      <h4 className="text-lg font-semibold text-white flex items-center gap-2">
+                        <FileText className="w-5 h-5 text-amber-400" />
+                        可行性评估
+                        {evalHistory.length > 1 && (
+                          <span className="text-xs px-2 py-0.5 rounded-full bg-deep-indigo-700/50 text-deep-indigo-300">
+                            共 {evalHistory.length} 次
+                          </span>
+                        )}
+                      </h4>
                       {evalHistory.length > 1 && (
-                        <span className="text-xs px-2 py-0.5 rounded-full bg-deep-indigo-700/50 text-deep-indigo-300">
-                          共 {evalHistory.length} 次
-                        </span>
+                        showEvalHistory ? <ChevronUp className="w-5 h-5 text-deep-indigo-400" /> : <ChevronDown className="w-5 h-5 text-deep-indigo-400" />
                       )}
-                    </h4>
-                    {evalHistory.length > 1 && (
-                      showEvalHistory ? <ChevronUp className="w-5 h-5 text-deep-indigo-400" /> : <ChevronDown className="w-5 h-5 text-deep-indigo-400" />
+                    </div>
+                    {!isEditing && selectedDraft.status !== 'running' && selectedDraft.status !== 'completed' && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (selectedDraft) handleStartEvaluate(selectedDraft);
+                        }}
+                        className="btn-secondary text-xs py-1.5 px-2.5 flex items-center gap-1"
+                      >
+                        <Star className="w-3.5 h-3.5" />
+                        {latestEval ? '重新评估' : '评估'}
+                      </button>
                     )}
                   </div>
 
@@ -712,15 +785,13 @@ export default function DraftsPage() {
                 </div>
               )}
 
-              <div className="flex justify-end gap-3 pt-4 border-t border-neon-purple-500/20">
+              <div className="flex justify-end gap-3 pt-4 border-t border-neon-purple-500/20 flex-wrap">
                 {nextAction?.show && !isEditing && (
                   <button
                     onClick={() => {
-                      if (nextAction.label === '去复盘') {
-                        window.location.hash = '#/review';
+                      nextAction.action();
+                      if (nextAction.isExternal) {
                         setShowDetailModal(false);
-                      } else {
-                        nextAction.action();
                       }
                     }}
                     className="btn-primary flex items-center gap-2"
@@ -823,6 +894,192 @@ export default function DraftsPage() {
             </button>
           </div>
         </div>
+      </Modal>
+
+      <Modal
+        isOpen={showEvaluateModal && !!selectedDraft}
+        onClose={() => {
+          setShowEvaluateModal(false);
+          setSelectedDraftId(null);
+        }}
+        title={getEvaluationByDraftId(selectedDraftId || '') ? '重新评估' : '可行性评估'}
+        size="lg"
+      >
+        {selectedDraft && (
+          <div className="space-y-6">
+            <div>
+              <h3 className="text-lg font-semibold text-white mb-1">
+                {selectedDraft.title}
+              </h3>
+              <div className="flex items-center gap-3 text-sm flex-wrap">
+                <span className="text-deep-indigo-400">
+                  负责人：{selectedDraft.owner || '未指定'}
+                </span>
+                <span className={`tag ${getStatusColor(selectedDraft.status)} border text-xs`}>
+                  {getStatusText(selectedDraft.status)}
+                </span>
+              </div>
+            </div>
+
+            <div className="space-y-6">
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="flex items-center gap-2 text-sm font-medium text-deep-indigo-200">
+                    <AlertTriangle className="w-4 h-4 text-rose-400" />
+                    风险评分
+                  </label>
+                  <span className="text-lg font-bold text-rose-400">
+                    {evaluationForm.riskScore}
+                  </span>
+                </div>
+                <input
+                  type="range"
+                  min="0"
+                  max="100"
+                  value={evaluationForm.riskScore}
+                  onChange={(e) =>
+                    setEvaluationForm({
+                      ...evaluationForm,
+                      riskScore: Number(e.target.value),
+                    })
+                  }
+                  className="w-full h-2 bg-deep-indigo-800 rounded-lg appearance-none cursor-pointer accent-rose-500"
+                />
+                <div className="flex justify-between text-xs text-deep-indigo-500 mt-1">
+                  <span>低风险</span>
+                  <span>高风险</span>
+                </div>
+              </div>
+
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="flex items-center gap-2 text-sm font-medium text-deep-indigo-200">
+                    <Package className="w-4 h-4 text-amber-400" />
+                    资源评分
+                  </label>
+                  <span className="text-lg font-bold text-amber-400">
+                    {evaluationForm.resourceScore}
+                  </span>
+                </div>
+                <input
+                  type="range"
+                  min="0"
+                  max="100"
+                  value={evaluationForm.resourceScore}
+                  onChange={(e) =>
+                    setEvaluationForm({
+                      ...evaluationForm,
+                      resourceScore: Number(e.target.value),
+                    })
+                  }
+                  className="w-full h-2 bg-deep-indigo-800 rounded-lg appearance-none cursor-pointer accent-amber-500"
+                />
+                <div className="flex justify-between text-xs text-deep-indigo-500 mt-1">
+                  <span>资源充足</span>
+                  <span>资源紧张</span>
+                </div>
+              </div>
+
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="flex items-center gap-2 text-sm font-medium text-deep-indigo-200">
+                    <TrendingUp className="w-4 h-4 text-emerald-400" />
+                    收益评分
+                  </label>
+                  <span className="text-lg font-bold text-emerald-400">
+                    {evaluationForm.benefitScore}
+                  </span>
+                </div>
+                <input
+                  type="range"
+                  min="0"
+                  max="100"
+                  value={evaluationForm.benefitScore}
+                  onChange={(e) =>
+                    setEvaluationForm({
+                      ...evaluationForm,
+                      benefitScore: Number(e.target.value),
+                    })
+                  }
+                  className="w-full h-2 bg-deep-indigo-800 rounded-lg appearance-none cursor-pointer accent-emerald-500"
+                />
+                <div className="flex justify-between text-xs text-deep-indigo-500 mt-1">
+                  <span>收益较低</span>
+                  <span>收益很高</span>
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-deep-indigo-200 mb-3">
+                决策建议
+              </label>
+              <div className="flex gap-3">
+                <button
+                  onClick={() =>
+                    setEvaluationForm({ ...evaluationForm, decision: 'approved' })
+                  }
+                  className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl font-medium transition-all ${
+                    evaluationForm.decision === 'approved'
+                      ? 'bg-emerald-500/20 text-emerald-400 border-2 border-emerald-500/50'
+                      : 'bg-deep-indigo-800/40 text-deep-indigo-300 border border-deep-indigo-700 hover:border-emerald-500/30'
+                  }`}
+                >
+                  <CheckCircle className="w-5 h-5" />
+                  通过
+                </button>
+                <button
+                  onClick={() =>
+                    setEvaluationForm({ ...evaluationForm, decision: 'rejected' })
+                  }
+                  className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl font-medium transition-all ${
+                    evaluationForm.decision === 'rejected'
+                      ? 'bg-rose-500/20 text-rose-400 border-2 border-rose-500/50'
+                      : 'bg-deep-indigo-800/40 text-deep-indigo-300 border border-deep-indigo-700 hover:border-rose-500/30'
+                  }`}
+                >
+                  <XCircle className="w-5 h-5" />
+                  驳回
+                </button>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-deep-indigo-200 mb-2">
+                评估意见
+              </label>
+              <textarea
+                placeholder="填写评估意见和建议..."
+                value={evaluationForm.comment}
+                onChange={(e) =>
+                  setEvaluationForm({ ...evaluationForm, comment: e.target.value })
+                }
+                className="input-field resize-none"
+                rows={4}
+              />
+            </div>
+
+            <div className="flex justify-end gap-3 pt-4">
+              <button
+                onClick={() => {
+                  setShowEvaluateModal(false);
+                  setSelectedDraftId(null);
+                }}
+                className="btn-secondary"
+              >
+                取消
+              </button>
+              <button
+                onClick={handleSubmitEvaluationFromDraft}
+                disabled={evaluationForm.decision === 'pending'}
+                className="btn-primary disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+              >
+                <Star className="w-4 h-4" />
+                提交评估
+              </button>
+            </div>
+          </div>
+        )}
       </Modal>
     </div>
   );

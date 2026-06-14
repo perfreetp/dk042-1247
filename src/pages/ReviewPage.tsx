@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   TrendingUp, TrendingDown, Minus, BookOpen, Lightbulb, Target,
-  Calendar, ChevronRight, Plus, Edit3, X, Save, FileText
+  Calendar, ChevronRight, Plus, Edit3, X, Save, FileText, ArrowLeft
 } from 'lucide-react';
 import { useAppStore } from '@/store/useAppStore';
 import Modal from '@/components/Modal/Modal';
@@ -15,23 +16,27 @@ export default function ReviewPage() {
   const getReviewByDraftId = useAppStore((state) => state.getReviewByDraftId);
   const getDraftById = useAppStore((state) => state.getDraftById);
   
+  const [searchParams, setSearchParams] = useSearchParams();
+  const navigate = useNavigate();
+  
   const [selectedDraftId, setSelectedDraftId] = useState<string | null>(null);
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
+  const [fromParam, setFromParam] = useState(false);
   
-  const completedDrafts = drafts.filter((d) => d.status === 'completed');
-  const reviewedDraftIds = reviews.map((r) => r.draftId);
-  const unreviewedDrafts = completedDrafts.filter((d) => !reviewedDraftIds.includes(d.id));
-
-  const selectedDraft = selectedDraftId ? getDraftById(selectedDraftId) : null;
-
   const [reviewForm, setReviewForm] = useState({
     actualMetrics: [] as ActualMetric[],
     summary: '',
     lessonsLearned: '',
     improvements: '',
   });
+  
+  const completedDrafts = drafts.filter((d) => d.status === 'completed');
+  const reviewedDraftIds = reviews.map((r) => r.draftId);
+  const unreviewedDrafts = completedDrafts.filter((d) => !reviewedDraftIds.includes(d.id));
+
+  const selectedDraft = selectedDraftId ? getDraftById(selectedDraftId) : null;
 
   const getMetricTrend = (actual: number, target: number) => {
     if (target <= 0) return { icon: Minus, color: 'text-deep-indigo-400', label: '持平' };
@@ -65,6 +70,34 @@ export default function ReviewPage() {
       });
     }
   };
+
+  const clearUrlParams = () => {
+    setSearchParams({});
+    setFromParam(false);
+  };
+
+  useEffect(() => {
+    const draftId = searchParams.get('draftId');
+    const action = searchParams.get('action');
+    if (draftId) {
+      const draft = getDraftById(draftId);
+      if (draft) {
+        setSelectedDraftId(draftId);
+        setFromParam(true);
+        if (action === 'edit') {
+          const existingReview = getReviewByDraftId(draftId);
+          initReviewForm(draft, existingReview);
+          setIsEditing(true);
+          setShowDetailModal(false);
+          setShowCreateModal(true);
+        } else {
+          setIsEditing(false);
+          setShowCreateModal(false);
+          setShowDetailModal(true);
+        }
+      }
+    }
+  }, [searchParams, getDraftById, getReviewByDraftId]);
 
   const handleViewDetail = (draft: Draft) => {
     setSelectedDraftId(draft.id);
@@ -100,6 +133,7 @@ export default function ReviewPage() {
     
     setShowCreateModal(false);
     setIsEditing(false);
+    clearUrlParams();
   };
 
   const updateActualMetric = (metricId: string, actual: number) => {
@@ -299,6 +333,7 @@ export default function ReviewPage() {
         onClose={() => {
           setShowDetailModal(false);
           setSelectedDraftId(null);
+          clearUrlParams();
         }}
         title=""
         size="xl"
@@ -309,12 +344,27 @@ export default function ReviewPage() {
 
           return (
             <div className="space-y-6">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <h2 className="text-2xl font-bold text-white mb-1">{selectedDraft.title}</h2>
-                  <p className="text-sm text-deep-indigo-400">
-                    复盘更新于 {formatDateTime(review.completedAt)}
-                  </p>
+              <div className="flex items-start justify-between gap-3 flex-wrap">
+                <div className="flex items-center gap-3 flex-wrap">
+                  {fromParam && (
+                    <button
+                      onClick={() => {
+                        setShowDetailModal(false);
+                        setSelectedDraftId(null);
+                        clearUrlParams();
+                        navigate(-1);
+                      }}
+                      className="p-2 rounded-lg hover:bg-white/10 text-deep-indigo-400 hover:text-white"
+                    >
+                      <ArrowLeft className="w-5 h-5" />
+                    </button>
+                  )}
+                  <div>
+                    <h2 className="text-2xl font-bold text-white mb-1">{selectedDraft.title}</h2>
+                    <p className="text-sm text-deep-indigo-400">
+                      复盘更新于 {formatDateTime(review.completedAt)}
+                    </p>
+                  </div>
                 </div>
                 <button
                   onClick={handleStartEdit}
@@ -411,6 +461,7 @@ export default function ReviewPage() {
           setShowCreateModal(false);
           setSelectedDraftId(null);
           setIsEditing(false);
+          clearUrlParams();
         }}
         title={isEditing ? '编辑复盘' : '填写复盘'}
         size="xl"
@@ -519,6 +570,7 @@ export default function ReviewPage() {
                   setShowCreateModal(false);
                   setSelectedDraftId(null);
                   setIsEditing(false);
+                  clearUrlParams();
                 }}
                 className="btn-secondary flex items-center gap-1.5"
               >

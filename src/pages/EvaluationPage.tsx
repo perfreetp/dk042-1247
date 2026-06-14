@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   AlertTriangle, Package, TrendingUp, CheckCircle, XCircle, Clock,
   ChevronRight, Star, Play, FileText, History, ChevronDown, ChevronUp,
@@ -19,6 +20,8 @@ export default function EvaluationPage() {
   const updateDraftStatus = useAppStore((state) => state.updateDraftStatus);
   const getEvaluationByDraftId = useAppStore((state) => state.getEvaluationByDraftId);
   const getEvaluationsByDraftId = useAppStore((state) => state.getEvaluationsByDraftId);
+  
+  const navigate = useNavigate();
   
   const [activeTab, setActiveTab] = useState<TabType>('pending');
   const [selectedDraftId, setSelectedDraftId] = useState<string | null>(null);
@@ -83,8 +86,8 @@ export default function EvaluationPage() {
     updateDraftStatus(draftId, 'running');
   };
 
-  const handleGoToReview = () => {
-    window.location.hash = '#/review';
+  const handleGoToReview = (draftId: string) => {
+    navigate(`/review?draftId=${draftId}&action=edit`);
   };
 
   const ScoreGauge = ({ score, label, color }: { score: number; label: string; color: string }) => (
@@ -219,7 +222,7 @@ export default function EvaluationPage() {
                     )}
                     {draft.status === 'completed' && (
                       <button
-                        onClick={handleGoToReview}
+                        onClick={() => handleGoToReview(draft.id)}
                         className="btn-primary text-sm py-2 px-3 flex items-center gap-1.5"
                       >
                         <FileText className="w-4 h-4" />
