@@ -6,18 +6,19 @@ import { useAppStore } from '@/store/useAppStore';
 import Modal from '@/components/Modal/Modal';
 
 interface InspirationDetailProps {
-  inspiration: Inspiration;
+  inspirationId: string;
   isOpen: boolean;
   onClose: () => void;
 }
 
-export default function InspirationDetail({ inspiration, isOpen, onClose }: InspirationDetailProps) {
+export default function InspirationDetail({ inspirationId, isOpen, onClose }: InspirationDetailProps) {
   const [commentText, setCommentText] = useState('');
   const [riskText, setRiskText] = useState('');
   const [riskLevel, setRiskLevel] = useState<Risk['level']>('medium');
   const [showRiskInput, setShowRiskInput] = useState(false);
   const [showCreateDraft, setShowCreateDraft] = useState(false);
   
+  const inspiration = useAppStore((state) => state.getInspirationById(inspirationId));
   const toggleLike = useAppStore((state) => state.toggleLike);
   const addComment = useAppStore((state) => state.addComment);
   const addRisk = useAppStore((state) => state.addRisk);
@@ -26,22 +27,24 @@ export default function InspirationDetail({ inspiration, isOpen, onClose }: Insp
 
   const handleSubmitComment = () => {
     if (!commentText.trim()) return;
-    addComment(inspiration.id, commentText.trim());
+    addComment(inspirationId, commentText.trim());
     setCommentText('');
   };
 
   const handleSubmitRisk = () => {
     if (!riskText.trim()) return;
-    addRisk(inspiration.id, riskText.trim(), riskLevel);
+    addRisk(inspirationId, riskText.trim(), riskLevel);
     setRiskText('');
     setShowRiskInput(false);
   };
 
   const handleCreateDraft = () => {
-    createDraftFromInspiration(inspiration.id, {});
+    createDraftFromInspiration(inspirationId, {});
     setShowCreateDraft(false);
     onClose();
   };
+
+  if (!inspiration) return null;
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="灵感详情" size="lg">

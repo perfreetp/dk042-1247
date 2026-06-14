@@ -18,9 +18,11 @@ export default function DraftsPage() {
   const drafts = useAppStore((state) => state.drafts);
   const inspirations = useAppStore((state) => state.inspirations);
   const updateDraftStatus = useAppStore((state) => state.updateDraftStatus);
+  const createDraft = useAppStore((state) => state.createDraft);
+  const getDraftById = useAppStore((state) => state.getDraftById);
   
   const [selectedStatus, setSelectedStatus] = useState<DraftStatus | 'all'>('all');
-  const [selectedDraft, setSelectedDraft] = useState<Draft | null>(null);
+  const [selectedDraftId, setSelectedDraftId] = useState<string | null>(null);
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
   
@@ -32,27 +34,34 @@ export default function DraftsPage() {
     endDate: '',
   });
 
+  const selectedDraft = selectedDraftId ? getDraftById(selectedDraftId) : null;
   const filteredDrafts = drafts.filter(
     (draft) => selectedStatus === 'all' || draft.status === selectedStatus
   );
 
   const handleViewDetail = (draft: Draft) => {
-    setSelectedDraft(draft);
+    setSelectedDraftId(draft.id);
     setShowDetailModal(true);
   };
 
   const handleSubmitForEvaluation = (draftId: string) => {
     updateDraftStatus(draftId, 'pending');
-    const draft = drafts.find((d) => d.id === draftId);
-    if (draft) {
-      setSelectedDraft({ ...draft, status: 'pending' });
-    }
   };
 
   const handleCreateDraft = () => {
     if (!newDraft.title.trim()) return;
     
-    setShowCreateModal(false);
+    const createdDraft = createDraft({
+      title: newDraft.title,
+      description: newDraft.description,
+      owner: newDraft.owner,
+      startDate: newDraft.startDate,
+      endDate: newDraft.endDate,
+      resourceRequirements: [],
+      metrics: [],
+      relatedInspirationIds: [],
+    });
+    
     setNewDraft({
       title: '',
       description: '',
@@ -60,6 +69,12 @@ export default function DraftsPage() {
       startDate: '',
       endDate: '',
     });
+    setShowCreateModal(false);
+    
+    if (createdDraft) {
+      setSelectedDraftId(createdDraft.id);
+      setShowDetailModal(true);
+    }
   };
 
   const getRelatedInspirations = (draft: Draft) => {
@@ -189,7 +204,10 @@ export default function DraftsPage() {
 
       <Modal
         isOpen={showDetailModal && !!selectedDraft}
-        onClose={() => setShowDetailModal(false)}
+        onClose={() => {
+          setShowDetailModal(false);
+          setSelectedDraftId(null);
+        }}
         title={selectedDraft?.title || ''}
         size="xl"
       >

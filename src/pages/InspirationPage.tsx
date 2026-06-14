@@ -4,7 +4,6 @@ import { useAppStore } from '@/store/useAppStore';
 import InspirationCard from '@/components/InspirationCard/InspirationCard';
 import InspirationDetail from '@/components/InspirationDetail/InspirationDetail';
 import Modal from '@/components/Modal/Modal';
-import type { Inspiration } from '@/types';
 
 const allTags = ['全部', '节日', '付费', '留存', '社交', '新手', '赛季', '召回'];
 
@@ -20,7 +19,7 @@ export default function InspirationPage() {
   const [selectedTag, setSelectedTag] = useState('全部');
   const [sortBy, setSortBy] = useState('latest');
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedInspiration, setSelectedInspiration] = useState<Inspiration | null>(null);
+  const [selectedInspirationId, setSelectedInspirationId] = useState<string | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
   
   const [newInspiration, setNewInspiration] = useState({
@@ -183,7 +182,7 @@ export default function InspirationPage() {
           >
             <InspirationCard
               inspiration={inspiration}
-              onClick={() => setSelectedInspiration(inspiration)}
+              onClick={() => setSelectedInspirationId(inspiration.id)}
             />
           </div>
         ))}
@@ -198,11 +197,11 @@ export default function InspirationPage() {
         </div>
       )}
 
-      {selectedInspiration && (
+      {selectedInspirationId && (
         <InspirationDetail
-          inspiration={selectedInspiration}
-          isOpen={!!selectedInspiration}
-          onClose={() => setSelectedInspiration(null)}
+          inspirationId={selectedInspirationId}
+          isOpen={!!selectedInspirationId}
+          onClose={() => setSelectedInspirationId(null)}
         />
       )}
 

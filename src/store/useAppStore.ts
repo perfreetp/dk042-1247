@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { persist, createJSONStorage } from 'zustand/middleware';
 import type {
   Inspiration,
   Material,
@@ -33,6 +34,7 @@ interface AppState {
   
   addMaterial: (material: Omit<Material, 'id' | 'uploadedAt'>) => void;
   
+  createDraft: (draft: Omit<Draft, 'id' | 'createdAt' | 'status'> & Partial<Pick<Draft, 'status'>>) => Draft;
   createDraftFromInspiration: (inspirationId: string, draftData: Partial<Draft>) => void;
   updateDraftStatus: (draftId: string, status: Draft['status']) => void;
   
@@ -50,164 +52,192 @@ const generateId = (prefix: string) => {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 };
 
-export const useAppStore = create<AppState>((set, get) => ({
-  currentUser: mockCurrentUser,
-  inspirations: mockInspirations,
-  materials: mockMaterials,
-  drafts: mockDrafts,
-  evaluations: mockEvaluations,
-  reviews: mockReviews,
+export const useAppStore = create<AppState>()(
+  persist(
+    (set, get) => ({
+      currentUser: mockCurrentUser,
+      inspirations: mockInspirations,
+      materials: mockMaterials,
+      drafts: mockDrafts,
+      evaluations: mockEvaluations,
+      reviews: mockReviews,
 
-  toggleLike: (inspirationId) => {
-    set((state) => ({
-      inspirations: state.inspirations.map((ins) =>
-        ins.id === inspirationId
-          ? {
-              ...ins,
-              isLiked: !ins.isLiked,
-              likes: ins.isLiked ? ins.likes - 1 : ins.likes + 1,
-            }
-          : ins
-      ),
-    }));
-  },
+      toggleLike: (inspirationId) => {
+        set((state) => ({
+          inspirations: state.inspirations.map((ins) =>
+            ins.id === inspirationId
+              ? {
+                  ...ins,
+                  isLiked: !ins.isLiked,
+                  likes: ins.isLiked ? ins.likes - 1 : ins.likes + 1,
+                }
+              : ins
+          ),
+        }));
+      },
 
-  addComment: (inspirationId, content) => {
-    const { currentUser } = get();
-    const newComment: Comment = {
-      id: generateId('c'),
-      content,
-      author: currentUser.name,
-      createdAt: new Date().toISOString(),
-    };
-    set((state) => ({
-      inspirations: state.inspirations.map((ins) =>
-        ins.id === inspirationId
-          ? { ...ins, comments: [...ins.comments, newComment] }
-          : ins
-      ),
-    }));
-  },
+      addComment: (inspirationId, content) => {
+        const { currentUser } = get();
+        const newComment: Comment = {
+          id: generateId('c'),
+          content,
+          author: currentUser.name,
+          createdAt: new Date().toISOString(),
+        };
+        set((state) => ({
+          inspirations: state.inspirations.map((ins) =>
+            ins.id === inspirationId
+              ? { ...ins, comments: [...ins.comments, newComment] }
+              : ins
+          ),
+        }));
+      },
 
-  addRisk: (inspirationId, content, level) => {
-    const { currentUser } = get();
-    const newRisk: Risk = {
-      id: generateId('r'),
-      content,
-      level,
-      author: currentUser.name,
-    };
-    set((state) => ({
-      inspirations: state.inspirations.map((ins) =>
-        ins.id === inspirationId
-          ? { ...ins, risks: [...ins.risks, newRisk] }
-          : ins
-      ),
-    }));
-  },
+      addRisk: (inspirationId, content, level) => {
+        const { currentUser } = get();
+        const newRisk: Risk = {
+          id: generateId('r'),
+          content,
+          level,
+          author: currentUser.name,
+        };
+        set((state) => ({
+          inspirations: state.inspirations.map((ins) =>
+            ins.id === inspirationId
+              ? { ...ins, risks: [...ins.risks, newRisk] }
+              : ins
+          ),
+        }));
+      },
 
-  addInspiration: (inspiration) => {
-    const { currentUser } = get();
-    const newInspiration: Inspiration = {
-      ...inspiration,
-      id: generateId('ins'),
-      likes: 0,
-      createdAt: new Date().toISOString(),
-      isLiked: false,
-      comments: [],
-      risks: [],
-      author: currentUser.name,
-    };
-    set((state) => ({
-      inspirations: [newInspiration, ...state.inspirations],
-    }));
-  },
+      addInspiration: (inspiration) => {
+        const { currentUser } = get();
+        const newInspiration: Inspiration = {
+          ...inspiration,
+          id: generateId('ins'),
+          likes: 0,
+          createdAt: new Date().toISOString(),
+          isLiked: false,
+          comments: [],
+          risks: [],
+          author: currentUser.name,
+        };
+        set((state) => ({
+          inspirations: [newInspiration, ...state.inspirations],
+        }));
+      },
 
-  addMaterial: (material) => {
-    const newMaterial: Material = {
-      ...material,
-      id: generateId('mat'),
-      uploadedAt: new Date().toISOString(),
-    };
-    set((state) => ({
-      materials: [newMaterial, ...state.materials],
-    }));
-  },
+      addMaterial: (material) => {
+        const newMaterial: Material = {
+          ...material,
+          id: generateId('mat'),
+          uploadedAt: new Date().toISOString(),
+        };
+        set((state) => ({
+          materials: [newMaterial, ...state.materials],
+        }));
+      },
 
-  createDraftFromInspiration: (inspirationId, draftData) => {
-    const inspiration = get().inspirations.find((i) => i.id === inspirationId);
-    if (!inspiration) return;
+      createDraft: (draft) => {
+        const newDraft: Draft = {
+          ...draft,
+          id: generateId('draft'),
+          status: draft.status || 'draft',
+          createdAt: new Date().toISOString(),
+        };
+        set((state) => ({
+          drafts: [newDraft, ...state.drafts],
+        }));
+        return newDraft;
+      },
 
-    const newDraft: Draft = {
-      id: generateId('draft'),
-      title: draftData.title || inspiration.title,
-      description: draftData.description || inspiration.description,
-      status: 'draft',
-      resourceRequirements: draftData.resourceRequirements || [],
-      metrics: draftData.metrics || [],
-      owner: draftData.owner || get().currentUser.name,
-      startDate: draftData.startDate || '',
-      endDate: draftData.endDate || '',
-      relatedInspirationIds: [inspirationId],
-      createdAt: new Date().toISOString(),
-    };
-    set((state) => ({
-      drafts: [newDraft, ...state.drafts],
-    }));
-  },
+      createDraftFromInspiration: (inspirationId, draftData) => {
+        const inspiration = get().inspirations.find((i) => i.id === inspirationId);
+        if (!inspiration) return;
 
-  updateDraftStatus: (draftId, status) => {
-    set((state) => ({
-      drafts: state.drafts.map((d) =>
-        d.id === draftId ? { ...d, status } : d
-      ),
-    }));
-  },
+        const newDraft: Draft = {
+          id: generateId('draft'),
+          title: draftData.title || inspiration.title,
+          description: draftData.description || inspiration.description,
+          status: 'draft',
+          resourceRequirements: draftData.resourceRequirements || [],
+          metrics: draftData.metrics || [],
+          owner: draftData.owner || get().currentUser.name,
+          startDate: draftData.startDate || '',
+          endDate: draftData.endDate || '',
+          relatedInspirationIds: [inspirationId],
+          createdAt: new Date().toISOString(),
+        };
+        set((state) => ({
+          drafts: [newDraft, ...state.drafts],
+        }));
+      },
 
-  submitEvaluation: (draftId, evaluation) => {
-    const { currentUser } = get();
-    const newEvaluation: Evaluation = {
-      ...evaluation,
-      id: generateId('eval'),
-      draftId,
-      evaluator: currentUser.name,
-      evaluatedAt: new Date().toISOString(),
-    };
-    set((state) => ({
-      evaluations: [...state.evaluations, newEvaluation],
-      drafts: state.drafts.map((d) =>
-        d.id === draftId
-          ? { ...d, status: evaluation.decision === 'approved' ? 'approved' : d.status }
-          : d
-      ),
-    }));
-  },
+      updateDraftStatus: (draftId, status) => {
+        set((state) => ({
+          drafts: state.drafts.map((d) =>
+            d.id === draftId ? { ...d, status } : d
+          ),
+        }));
+      },
 
-  submitReview: (draftId, review) => {
-    const newReview: Review = {
-      ...review,
-      id: generateId('review'),
-      draftId,
-      completedAt: new Date().toISOString(),
-    };
-    set((state) => ({
-      reviews: [...state.reviews, newReview],
-    }));
-  },
+      submitEvaluation: (draftId, evaluation) => {
+        const { currentUser } = get();
+        const newEvaluation: Evaluation = {
+          ...evaluation,
+          id: generateId('eval'),
+          draftId,
+          evaluator: currentUser.name,
+          evaluatedAt: new Date().toISOString(),
+        };
+        set((state) => ({
+          evaluations: [...state.evaluations, newEvaluation],
+          drafts: state.drafts.map((d) =>
+            d.id === draftId
+              ? { ...d, status: evaluation.decision === 'approved' ? 'approved' : 'rejected' }
+              : d
+          ),
+        }));
+      },
 
-  getInspirationById: (id) => {
-    return get().inspirations.find((i) => i.id === id);
-  },
+      submitReview: (draftId, review) => {
+        const newReview: Review = {
+          ...review,
+          id: generateId('review'),
+          draftId,
+          completedAt: new Date().toISOString(),
+        };
+        set((state) => ({
+          reviews: [...state.reviews, newReview],
+        }));
+      },
 
-  getDraftById: (id) => {
-    return get().drafts.find((d) => d.id === id);
-  },
+      getInspirationById: (id) => {
+        return get().inspirations.find((i) => i.id === id);
+      },
 
-  getEvaluationByDraftId: (draftId) => {
-    return get().evaluations.find((e) => e.draftId === draftId);
-  },
+      getDraftById: (id) => {
+        return get().drafts.find((d) => d.id === id);
+      },
 
-  getReviewByDraftId: (draftId) => {
-    return get().reviews.find((r) => r.draftId === draftId);
-  },
-}));
+      getEvaluationByDraftId: (draftId) => {
+        return get().evaluations.find((e) => e.draftId === draftId);
+      },
+
+      getReviewByDraftId: (draftId) => {
+        return get().reviews.find((r) => r.draftId === draftId);
+      },
+    }),
+    {
+      name: 'idea-lab-storage',
+      storage: createJSONStorage(() => localStorage),
+      partialize: (state) => ({
+        inspirations: state.inspirations,
+        materials: state.materials,
+        drafts: state.drafts,
+        evaluations: state.evaluations,
+        reviews: state.reviews,
+      }),
+    }
+  )
+);

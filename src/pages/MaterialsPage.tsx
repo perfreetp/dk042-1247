@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef, useEffect } from 'react';
 import { Plus, Search, Image, Eye, Download } from 'lucide-react';
 import { useAppStore } from '@/store/useAppStore';
 import Modal from '@/components/Modal/Modal';
@@ -21,6 +21,8 @@ export default function MaterialsPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedMaterial, setSelectedMaterial] = useState<Material | null>(null);
   const [showUploadModal, setShowUploadModal] = useState(false);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string>('');
   
   const [newMaterial, setNewMaterial] = useState({
     title: '',
@@ -28,6 +30,14 @@ export default function MaterialsPage() {
     tags: [] as string[],
   });
   const [tagInput, setTagInput] = useState('');
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  
+  useEffect(() => {
+    if (!showUploadModal) {
+      setSelectedFile(null);
+      setPreviewUrl('');
+    }
+  }, [showUploadModal]);
 
   const filteredMaterials = useMemo(() => {
     let result = [...materials];
@@ -65,20 +75,51 @@ export default function MaterialsPage() {
     });
   };
 
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setSelectedFile(file);
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setPreviewUrl(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+      
+      if (!newMaterial.title.trim()) {
+        setNewMaterial({ ...newMaterial, title: file.name.replace(/\.[^/.]+$/, '') });
+      }
+    }
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    const file = e.dataTransfer.files?.[0];
+    if (file && file.type.startsWith('image/')) {
+      setSelectedFile(file);
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setPreviewUrl(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+      
+      if (!newMaterial.title.trim()) {
+        setNewMaterial({ ...newMaterial, title: file.name.replace(/\.[^/.]+$/, '') });
+      }
+    }
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+  };
+
   const handleUpload = () => {
-    if (!newMaterial.title.trim()) return;
-    
-    const imageUrls = [
-      'https://images.unsplash.com/photo-1550745165-9bc0b252726f?w=800&h=600&fit=crop',
-      'https://images.unsplash.com/photo-1538481199705-c710c4e965fc?w=800&h=600&fit=crop',
-      'https://images.unsplash.com/photo-1511512578047-dfb367046420?w=800&h=600&fit=crop',
-    ];
+    if (!newMaterial.title.trim() || !previewUrl) return;
     
     addMaterial({
       title: newMaterial.title,
       type: newMaterial.type,
       tags: newMaterial.tags,
-      url: imageUrls[Math.floor(Math.random() * imageUrls.length)],
+      url: previewUrl,
     });
     
     setNewMaterial({
@@ -86,6 +127,8 @@ export default function MaterialsPage() {
       type: 'other',
       tags: [],
     });
+    setSelectedFile(null);
+    setPreviewUrl('');
     setShowUploadModal(false);
   };
 
@@ -256,11 +299,43 @@ export default function MaterialsPage() {
         size="md"
       >
         <div className="space-y-4">
-          <div className="border-2 border-dashed border-neon-purple-500/30 rounded-xl p-8 text-center hover:border-neon-purple-500/50 transition-colors cursor-pointer bg-deep-indigo-900/30">
-            <Image className="w-12 h-12 text-deep-indigo-400 mx-auto mb-3" />
-            <p className="text-deep-indigo-300 mb-1">点击或拖拽图片到这里上传</p>
-            <p className="text-xs text-deep-indigo-500">支持 JPG、PNG、WEBP 格式</p>
-          </div>
+          <input
+            type="file"
+            ref={fileInputRef}
+            onChange={handleFileChange}
+            accept="image/*"
+            className="hidden"
+          />
+          
+          {previewUrl ? (
+            <div
+              className="border-2 border-dashed border-cyber-cyan-500/50 rounded-xl p-4 text-center hover:border-cyber-cyan-500/70 transition-colors cursor-pointer bg-deep-indigo-900/30"
+              onClick={() => fileInputRef.current?.click()}
+              onDrop={handleDrop}
+              onDragOver={handleDragOver}
+            >
+              <img
+                src={previewUrl}
+                alt="预览"
+                className="max-h-48 mx-auto rounded-lg object-contain mb-3"
+              />
+              <p className="text-cyber-cyan-400 text-sm mb-1">
+                {selectedFile?.name || '已选择图片'}
+              </p>
+              <p className="text-xs text-deep-indigo-500">点击或拖拽更换图片</p>
+            </div>
+          ) : (
+            <div
+              className="border-2 border-dashed border-neon-purple-500/30 rounded-xl p-8 text-center hover:border-neon-purple-500/50 transition-colors cursor-pointer bg-deep-indigo-900/30"
+              onClick={() => fileInputRef.current?.click()}
+              onDrop={handleDrop}
+              onDragOver={handleDragOver}
+            >
+              <Image className="w-12 h-12 text-deep-indigo-400 mx-auto mb-3" />
+              <p className="text-deep-indigo-300 mb-1">点击或拖拽图片到这里上传</p>
+              <p className="text-xs text-deep-indigo-500">支持 JPG、PNG、WEBP 格式</p>
+            </div>
+          )}
 
           <div>
             <label className="block text-sm font-medium text-deep-indigo-200 mb-2">
@@ -337,7 +412,7 @@ export default function MaterialsPage() {
             </button>
             <button
               onClick={handleUpload}
-              disabled={!newMaterial.title.trim()}
+              disabled={!newMaterial.title.trim() || !previewUrl}
               className="btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
             >
               上传
