@@ -1,44 +1,30 @@
 import { useState } from 'react';
-import { TrendingUp, TrendingDown, Minus, BookOpen, Lightbulb, Target, Calendar, ChevronRight, Plus } from 'lucide-react';
+import {
+  TrendingUp, TrendingDown, Minus, BookOpen, Lightbulb, Target,
+  Calendar, ChevronRight, Plus, Edit3, X, Save, FileText
+} from 'lucide-react';
 import { useAppStore } from '@/store/useAppStore';
 import Modal from '@/components/Modal/Modal';
-import { formatDate } from '@/utils/helpers';
+import { formatDate, formatDateTime } from '@/utils/helpers';
 import type { Draft, ActualMetric } from '@/types';
 
 export default function ReviewPage() {
   const drafts = useAppStore((state) => state.drafts);
   const reviews = useAppStore((state) => state.reviews);
   const submitReview = useAppStore((state) => state.submitReview);
+  const getReviewByDraftId = useAppStore((state) => state.getReviewByDraftId);
+  const getDraftById = useAppStore((state) => state.getDraftById);
   
-  const [selectedDraft, setSelectedDraft] = useState<Draft | null>(null);
+  const [selectedDraftId, setSelectedDraftId] = useState<string | null>(null);
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
   
   const completedDrafts = drafts.filter((d) => d.status === 'completed');
   const reviewedDraftIds = reviews.map((r) => r.draftId);
   const unreviewedDrafts = completedDrafts.filter((d) => !reviewedDraftIds.includes(d.id));
 
-  const getReviewByDraftId = (draftId: string) => {
-    return reviews.find((r) => r.draftId === draftId);
-  };
-
-  const handleViewDetail = (draft: Draft) => {
-    setSelectedDraft(draft);
-    setShowDetailModal(true);
-  };
-
-  const handleCreateReview = (draft: Draft) => {
-    setSelectedDraft(draft);
-    setShowDetailModal(false);
-    setShowCreateModal(true);
-  };
-
-  const getMetricTrend = (actual: number, target: number) => {
-    const diff = ((actual - target) / target) * 100;
-    if (diff > 5) return { icon: TrendingUp, color: 'text-emerald-400', label: `+${diff.toFixed(1)}%` };
-    if (diff < -5) return { icon: TrendingDown, color: 'text-rose-400', label: `${diff.toFixed(1)}%` };
-    return { icon: Minus, color: 'text-deep-indigo-400', label: '持平' };
-  };
+  const selectedDraft = selectedDraftId ? getDraftById(selectedDraftId) : null;
 
   const [reviewForm, setReviewForm] = useState({
     actualMetrics: [] as ActualMetric[],
@@ -47,32 +33,65 @@ export default function ReviewPage() {
     improvements: '',
   });
 
-  const initReviewForm = (draft: Draft) => {
-    const metrics: ActualMetric[] = draft.metrics.map((m) => ({
-      id: m.id,
-      name: m.name,
-      actual: 0,
-      target: m.target,
-      unit: m.unit,
-    }));
-    setReviewForm({
-      actualMetrics: metrics,
-      summary: '',
-      lessonsLearned: '',
-      improvements: '',
-    });
+  const getMetricTrend = (actual: number, target: number) => {
+    if (target <= 0) return { icon: Minus, color: 'text-deep-indigo-400', label: '持平' };
+    const diff = ((actual - target) / target) * 100;
+    if (diff > 5) return { icon: TrendingUp, color: 'text-emerald-400', label: `+${diff.toFixed(1)}%` };
+    if (diff < -5) return { icon: TrendingDown, color: 'text-rose-400', label: `${diff.toFixed(1)}%` };
+    return { icon: Minus, color: 'text-deep-indigo-400', label: '持平' };
+  };
+
+  const initReviewForm = (draft: Draft, existingReview?: ReturnType<typeof getReviewByDraftId>) => {
+    if (existingReview) {
+      setReviewForm({
+        actualMetrics: JSON.parse(JSON.stringify(existingReview.actualMetrics)),
+        summary: existingReview.summary,
+        lessonsLearned: existingReview.lessonsLearned,
+        improvements: existingReview.improvements,
+      });
+    } else {
+      const metrics: ActualMetric[] = draft.metrics.map((m) => ({
+        id: m.id,
+        name: m.name,
+        actual: 0,
+        target: m.target,
+        unit: m.unit,
+      }));
+      setReviewForm({
+        actualMetrics: metrics,
+        summary: '',
+        lessonsLearned: '',
+        improvements: '',
+      });
+    }
+  };
+
+  const handleViewDetail = (draft: Draft) => {
+    setSelectedDraftId(draft.id);
+    setShowDetailModal(true);
+    setIsEditing(false);
+  };
+
+  const handleStartEdit = () => {
+    if (!selectedDraft) return;
+    const existingReview = getReviewByDraftId(selectedDraft.id);
+    initReviewForm(selectedDraft, existingReview);
+    setIsEditing(true);
+    setShowDetailModal(false);
+    setShowCreateModal(true);
   };
 
   const handleOpenCreateReview = (draft: Draft) => {
-    initReviewForm(draft);
-    setSelectedDraft(draft);
+    const existingReview = getReviewByDraftId(draft.id);
+    initReviewForm(draft, existingReview);
+    setSelectedDraftId(draft.id);
     setShowCreateModal(true);
   };
 
   const handleSubmitReview = () => {
-    if (!selectedDraft) return;
+    if (!selectedDraftId) return;
     
-    submitReview(selectedDraft.id, {
+    submitReview(selectedDraftId, {
       actualMetrics: reviewForm.actualMetrics,
       summary: reviewForm.summary,
       lessonsLearned: reviewForm.lessonsLearned,
@@ -80,6 +99,7 @@ export default function ReviewPage() {
     });
     
     setShowCreateModal(false);
+    setIsEditing(false);
   };
 
   const updateActualMetric = (metricId: string, actual: number) => {
@@ -151,7 +171,7 @@ export default function ReviewPage() {
                 style={{ animationDelay: `${index * 0.05}s` }}
                 className="glass-card glass-card-hover animate-slide-up overflow-hidden"
               >
-                <div className="p-4 flex items-center justify-between">
+                <div className="p-4 flex items-center justify-between flex-wrap gap-3">
                   <div className="flex items-center gap-4">
                     <div className="w-12 h-12 rounded-xl bg-amber-500/20 flex items-center justify-center">
                       <Calendar className="w-6 h-6 text-amber-400" />
@@ -159,7 +179,7 @@ export default function ReviewPage() {
                     <div>
                       <h3 className="font-semibold text-white">{draft.title}</h3>
                       <p className="text-sm text-deep-indigo-400">
-                        结束于 {formatDate(draft.endDate)}
+                        {draft.endDate ? `结束于 ${formatDate(draft.endDate)}` : '已完成'}
                       </p>
                     </div>
                   </div>
@@ -194,30 +214,47 @@ export default function ReviewPage() {
             </div>
           ) : (
             reviews.map((review, index) => {
-              const draft = drafts.find((d) => d.id === review.draftId);
+              const draft = getDraftById(review.draftId);
               if (!draft) return null;
 
               return (
                 <div
                   key={review.id}
                   style={{ animationDelay: `${index * 0.05}s` }}
-                  onClick={() => handleViewDetail(draft)}
-                  className="glass-card glass-card-hover cursor-pointer animate-slide-up overflow-hidden"
+                  className="glass-card glass-card-hover animate-slide-up overflow-hidden"
                 >
                   <div className="p-5">
-                    <div className="flex items-start justify-between mb-4">
-                      <div>
-                        <h3 className="text-lg font-bold text-white mb-1">
+                    <div className="flex items-start justify-between mb-4 flex-wrap gap-3">
+                      <div className="flex-1 cursor-pointer" onClick={() => handleViewDetail(draft)}>
+                        <h3 className="text-lg font-bold text-white mb-1 group-hover:text-cyber-cyan-400 transition-colors">
                           {draft.title}
                         </h3>
                         <p className="text-sm text-deep-indigo-400">
-                          复盘于 {formatDate(review.completedAt)}
+                          更新于 {formatDateTime(review.completedAt)}
                         </p>
                       </div>
-                      <ChevronRight className="w-5 h-5 text-deep-indigo-500" />
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedDraftId(draft.id);
+                            handleStartEdit();
+                          }}
+                          className="btn-secondary text-sm py-2 px-3 flex items-center gap-1.5"
+                        >
+                          <Edit3 className="w-4 h-4" />
+                          继续编辑
+                        </button>
+                        <button
+                          onClick={() => handleViewDetail(draft)}
+                          className="p-2 rounded-lg hover:bg-white/10 text-deep-indigo-400 hover:text-white"
+                        >
+                          <ChevronRight className="w-5 h-5" />
+                        </button>
+                      </div>
                     </div>
 
-                    <div className="grid grid-cols-3 gap-3 mb-4">
+                    <div className="grid grid-cols-3 gap-3 mb-4 cursor-pointer" onClick={() => handleViewDetail(draft)}>
                       {review.actualMetrics.slice(0, 3).map((metric) => {
                         const trend = getMetricTrend(metric.actual, metric.target);
                         const TrendIcon = trend.icon;
@@ -246,8 +283,8 @@ export default function ReviewPage() {
                       })}
                     </div>
 
-                    <p className="text-sm text-deep-indigo-300 line-clamp-2">
-                      {review.summary}
+                    <p className="text-sm text-deep-indigo-300 line-clamp-2 cursor-pointer" onClick={() => handleViewDetail(draft)}>
+                      {review.summary || '暂无总结，点击继续编辑补录'}
                     </p>
                   </div>
                 </div>
@@ -259,8 +296,11 @@ export default function ReviewPage() {
 
       <Modal
         isOpen={showDetailModal && !!selectedDraft}
-        onClose={() => setShowDetailModal(false)}
-        title={selectedDraft?.title || ''}
+        onClose={() => {
+          setShowDetailModal(false);
+          setSelectedDraftId(null);
+        }}
+        title=""
         size="xl"
       >
         {selectedDraft && (() => {
@@ -269,6 +309,22 @@ export default function ReviewPage() {
 
           return (
             <div className="space-y-6">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <h2 className="text-2xl font-bold text-white mb-1">{selectedDraft.title}</h2>
+                  <p className="text-sm text-deep-indigo-400">
+                    复盘更新于 {formatDateTime(review.completedAt)}
+                  </p>
+                </div>
+                <button
+                  onClick={handleStartEdit}
+                  className="btn-secondary text-sm py-2 px-3 flex items-center gap-1.5"
+                >
+                  <Edit3 className="w-4 h-4" />
+                  编辑复盘
+                </button>
+              </div>
+
               <div>
                 <h4 className="text-lg font-semibold text-white mb-3 flex items-center gap-2">
                   <Target className="w-5 h-5 text-cyber-cyan-400" />
@@ -305,7 +361,7 @@ export default function ReviewPage() {
                           <div
                             className="h-full rounded-full bg-gradient-to-r from-neon-purple-500 to-cyber-cyan-400 transition-all"
                             style={{
-                              width: `${Math.min((metric.actual / metric.target) * 100, 100)}%`,
+                              width: `${metric.target > 0 ? Math.min((metric.actual / metric.target) * 100, 100) : 0}%`,
                             }}
                           />
                         </div>
@@ -320,8 +376,8 @@ export default function ReviewPage() {
                   <BookOpen className="w-4 h-4 text-cyber-cyan-400" />
                   活动总结
                 </h4>
-                <p className="text-deep-indigo-300 leading-relaxed">
-                  {review.summary}
+                <p className="text-deep-indigo-300 leading-relaxed whitespace-pre-wrap">
+                  {review.summary || '暂无总结'}
                 </p>
               </div>
 
@@ -331,7 +387,7 @@ export default function ReviewPage() {
                   经验教训
                 </h4>
                 <p className="text-deep-indigo-300 leading-relaxed whitespace-pre-wrap">
-                  {review.lessonsLearned}
+                  {review.lessonsLearned || '暂无'}
                 </p>
               </div>
 
@@ -341,12 +397,8 @@ export default function ReviewPage() {
                   优化建议
                 </h4>
                 <p className="text-deep-indigo-300 leading-relaxed whitespace-pre-wrap">
-                  {review.improvements}
+                  {review.improvements || '暂无'}
                 </p>
-              </div>
-
-              <div className="text-right text-sm text-deep-indigo-500">
-                复盘完成于 {formatDate(review.completedAt)}
               </div>
             </div>
           );
@@ -355,8 +407,12 @@ export default function ReviewPage() {
 
       <Modal
         isOpen={showCreateModal && !!selectedDraft}
-        onClose={() => setShowCreateModal(false)}
-        title="填写复盘"
+        onClose={() => {
+          setShowCreateModal(false);
+          setSelectedDraftId(null);
+          setIsEditing(false);
+        }}
+        title={isEditing ? '编辑复盘' : '填写复盘'}
         size="xl"
       >
         {selectedDraft && (
@@ -364,7 +420,7 @@ export default function ReviewPage() {
             <div className="p-4 rounded-xl bg-deep-indigo-800/40 border border-neon-purple-500/10">
               <h3 className="font-semibold text-white">{selectedDraft.title}</h3>
               <p className="text-sm text-deep-indigo-400 mt-1">
-                {selectedDraft.description}
+                {selectedDraft.description || '暂无描述'}
               </p>
             </div>
 
@@ -373,37 +429,43 @@ export default function ReviewPage() {
                 <Target className="w-5 h-5 text-cyber-cyan-400" />
                 实际效果数据
               </h4>
-              <div className="space-y-3">
-                {reviewForm.actualMetrics.map((metric) => (
-                  <div
-                    key={metric.id}
-                    className="p-4 rounded-xl bg-deep-indigo-800/40 border border-neon-purple-500/10"
-                  >
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-sm font-medium text-white">
-                        {metric.name}
-                      </span>
-                      <span className="text-xs text-deep-indigo-500">
-                        目标：{metric.target} {metric.unit}
-                      </span>
+              {reviewForm.actualMetrics.length === 0 ? (
+                <p className="text-deep-indigo-500 text-sm p-4 rounded-xl bg-deep-indigo-800/40 border border-neon-purple-500/10">
+                  该草案未设置验证指标，可在活动草案页补录后再填写实际数据
+                </p>
+              ) : (
+                <div className="space-y-3">
+                  {reviewForm.actualMetrics.map((metric) => (
+                    <div
+                      key={metric.id}
+                      className="p-4 rounded-xl bg-deep-indigo-800/40 border border-neon-purple-500/10"
+                    >
+                      <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
+                        <span className="text-sm font-medium text-white">
+                          {metric.name}
+                        </span>
+                        <span className="text-xs text-deep-indigo-500">
+                          目标：{metric.target} {metric.unit}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <input
+                          type="number"
+                          value={metric.actual}
+                          onChange={(e) =>
+                            updateActualMetric(metric.id, Number(e.target.value))
+                          }
+                          className="input-field flex-1"
+                          placeholder="实际数值"
+                        />
+                        <span className="text-deep-indigo-400 text-sm w-12">
+                          {metric.unit}
+                        </span>
+                      </div>
                     </div>
-                    <div className="flex items-center gap-3">
-                      <input
-                        type="number"
-                        value={metric.actual}
-                        onChange={(e) =>
-                          updateActualMetric(metric.id, Number(e.target.value))
-                        }
-                        className="input-field flex-1"
-                        placeholder="实际数值"
-                      />
-                      <span className="text-deep-indigo-400 text-sm w-12">
-                        {metric.unit}
-                      </span>
-                    </div>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              )}
             </div>
 
             <div>
@@ -453,13 +515,19 @@ export default function ReviewPage() {
 
             <div className="flex justify-end gap-3 pt-4">
               <button
-                onClick={() => setShowCreateModal(false)}
-                className="btn-secondary"
+                onClick={() => {
+                  setShowCreateModal(false);
+                  setSelectedDraftId(null);
+                  setIsEditing(false);
+                }}
+                className="btn-secondary flex items-center gap-1.5"
               >
+                <X className="w-4 h-4" />
                 取消
               </button>
-              <button onClick={handleSubmitReview} className="btn-primary">
-                提交复盘
+              <button onClick={handleSubmitReview} className="btn-primary flex items-center gap-1.5">
+                <Save className="w-4 h-4" />
+                {isEditing ? '保存修改' : '提交复盘'}
               </button>
             </div>
           </div>

@@ -1,20 +1,29 @@
 import { useState } from 'react';
-import { AlertTriangle, Package, TrendingUp, CheckCircle, XCircle, Clock, ChevronRight, Star } from 'lucide-react';
+import {
+  AlertTriangle, Package, TrendingUp, CheckCircle, XCircle, Clock,
+  ChevronRight, Star, Play, FileText, History, ChevronDown, ChevronUp,
+  User, Calendar
+} from 'lucide-react';
 import { useAppStore } from '@/store/useAppStore';
 import Modal from '@/components/Modal/Modal';
-import { getStatusColor, getStatusText, formatDate } from '@/utils/helpers';
+import {
+  getStatusColor, getStatusText, formatDate, formatDateTime
+} from '@/utils/helpers';
 import type { Draft, EvaluationDecision } from '@/types';
 
 type TabType = 'pending' | 'evaluated';
 
 export default function EvaluationPage() {
   const drafts = useAppStore((state) => state.drafts);
-  const evaluations = useAppStore((state) => state.evaluations);
   const submitEvaluation = useAppStore((state) => state.submitEvaluation);
+  const updateDraftStatus = useAppStore((state) => state.updateDraftStatus);
+  const getEvaluationByDraftId = useAppStore((state) => state.getEvaluationByDraftId);
+  const getEvaluationsByDraftId = useAppStore((state) => state.getEvaluationsByDraftId);
   
   const [activeTab, setActiveTab] = useState<TabType>('pending');
-  const [selectedDraft, setSelectedDraft] = useState<Draft | null>(null);
+  const [selectedDraftId, setSelectedDraftId] = useState<string | null>(null);
   const [showEvaluateModal, setShowEvaluateModal] = useState(false);
+  const [showHistoryDraftId, setShowHistoryDraftId] = useState<string | null>(null);
   
   const [evaluationForm, setEvaluationForm] = useState({
     riskScore: 50,
@@ -24,18 +33,16 @@ export default function EvaluationPage() {
     comment: '',
   });
 
+  const getDraftById = useAppStore((state) => state.getDraftById);
+  const selectedDraft = selectedDraftId ? getDraftById(selectedDraftId) : null;
+
   const pendingDrafts = drafts.filter((d) => d.status === 'pending');
   const evaluatedDrafts = drafts.filter((d) => 
-    ['approved', 'rejected'].includes(d.status) ||
-    evaluations.some((e) => e.draftId === d.id)
+    ['approved', 'rejected', 'running', 'completed'].includes(d.status)
   );
 
-  const getEvaluationByDraftId = (draftId: string) => {
-    return evaluations.find((e) => e.draftId === draftId);
-  };
-
   const handleEvaluate = (draft: Draft) => {
-    setSelectedDraft(draft);
+    setSelectedDraftId(draft.id);
     const existingEvaluation = getEvaluationByDraftId(draft.id);
     if (existingEvaluation) {
       setEvaluationForm({
@@ -58,9 +65,9 @@ export default function EvaluationPage() {
   };
 
   const handleSubmitEvaluation = () => {
-    if (!selectedDraft) return;
+    if (!selectedDraftId) return;
     
-    submitEvaluation(selectedDraft.id, {
+    submitEvaluation(selectedDraftId, {
       riskScore: evaluationForm.riskScore,
       resourceScore: evaluationForm.resourceScore,
       benefitScore: evaluationForm.benefitScore,
@@ -69,6 +76,15 @@ export default function EvaluationPage() {
     });
     
     setShowEvaluateModal(false);
+    setSelectedDraftId(null);
+  };
+
+  const handleStartRunning = (draftId: string) => {
+    updateDraftStatus(draftId, 'running');
+  };
+
+  const handleGoToReview = () => {
+    window.location.hash = '#/review';
   };
 
   const ScoreGauge = ({ score, label, color }: { score: number; label: string; color: string }) => (
@@ -138,7 +154,9 @@ export default function EvaluationPage() {
 
       <div className="space-y-4">
         {displayDrafts.map((draft, index) => {
-          const evaluation = getEvaluationByDraftId(draft.id);
+          const latestEval = getEvaluationByDraftId(draft.id);
+          const evalHistory = getEvaluationsByDraftId(draft.id);
+          const showHistory = showHistoryDraftId === draft.id;
           
           return (
             <div
@@ -149,44 +167,163 @@ export default function EvaluationPage() {
               <div className="p-5">
                 <div className="flex items-start justify-between gap-4 mb-4">
                   <div className="flex-1">
-                    <div className="flex items-center gap-3 mb-2">
+                    <div className="flex items-center gap-3 mb-2 flex-wrap">
                       <h3 className="text-lg font-bold text-white">
                         {draft.title}
                       </h3>
                       <span className={`tag ${getStatusColor(draft.status)} border`}>
                         {getStatusText(draft.status)}
                       </span>
+                      {latestEval && (
+                        <span
+                          className={`tag border ${
+                            latestEval.decision === 'approved'
+                              ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40'
+                              : 'bg-rose-500/20 text-rose-400 border-rose-500/40'
+                          }`}
+                        >
+                          {latestEval.decision === 'approved' ? '评估通过' : '评估驳回'}
+                        </span>
+                      )}
+                      {evalHistory.length > 1 && (
+                        <span className="text-xs px-2 py-0.5 rounded-full bg-deep-indigo-700/50 text-deep-indigo-300">
+                          共 {evalHistory.length} 次
+                        </span>
+                      )}
                     </div>
-                    <p className="text-deep-indigo-300 text-sm line-clamp-1">
+                    <p className="text-deep-indigo-300 text-sm line-clamp-1 mb-2">
                       {draft.description}
                     </p>
+                    <div className="flex items-center gap-4 text-xs text-deep-indigo-500">
+                      <span className="flex items-center gap-1">
+                        <User className="w-3 h-3" />
+                        {draft.owner || '未指定'}
+                      </span>
+                      {draft.startDate && (
+                        <span className="flex items-center gap-1">
+                          <Calendar className="w-3 h-3" />
+                          {formatDate(draft.startDate)}
+                        </span>
+                      )}
+                    </div>
                   </div>
-                  <button
-                    onClick={() => handleEvaluate(draft)}
-                    className="flex items-center gap-1 text-cyber-cyan-400 hover:text-cyber-cyan-300 transition-colors"
-                  >
-                    <span className="text-sm">评估</span>
-                    <ChevronRight className="w-4 h-4" />
-                  </button>
+                  <div className="flex items-center gap-2 flex-wrap justify-end">
+                    {draft.status === 'approved' && (
+                      <button
+                        onClick={() => handleStartRunning(draft.id)}
+                        className="btn-primary text-sm py-2 px-3 flex items-center gap-1.5"
+                      >
+                        <Play className="w-4 h-4" />
+                        开始执行
+                      </button>
+                    )}
+                    {draft.status === 'completed' && (
+                      <button
+                        onClick={handleGoToReview}
+                        className="btn-primary text-sm py-2 px-3 flex items-center gap-1.5"
+                      >
+                        <FileText className="w-4 h-4" />
+                        去复盘
+                      </button>
+                    )}
+                    <button
+                      onClick={() => handleEvaluate(draft)}
+                      className="flex items-center gap-1 text-cyber-cyan-400 hover:text-cyber-cyan-300 transition-colors bg-cyber-cyan-500/10 border border-cyber-cyan-500/30 rounded-lg px-3 py-2 text-sm"
+                    >
+                      <Star className="w-4 h-4" />
+                      {latestEval ? '重新评估' : '评估'}
+                    </button>
+                  </div>
                 </div>
 
-                {evaluation ? (
-                  <div className="grid grid-cols-3 gap-4 py-4 border-t border-neon-purple-500/10">
-                    <ScoreGauge
-                      score={evaluation.riskScore}
-                      label="风险评分"
-                      color="border-rose-500/50"
-                    />
-                    <ScoreGauge
-                      score={evaluation.resourceScore}
-                      label="资源评分"
-                      color="border-amber-500/50"
-                    />
-                    <ScoreGauge
-                      score={evaluation.benefitScore}
-                      label="收益评分"
-                      color="border-emerald-500/50"
-                    />
+                {latestEval ? (
+                  <div className="space-y-3">
+                    <div className="grid grid-cols-3 gap-4 py-4 border-t border-neon-purple-500/10">
+                      <ScoreGauge
+                        score={latestEval.riskScore}
+                        label="风险评分"
+                        color="border-rose-500/50"
+                      />
+                      <ScoreGauge
+                        score={latestEval.resourceScore}
+                        label="资源评分"
+                        color="border-amber-500/50"
+                      />
+                      <ScoreGauge
+                        score={latestEval.benefitScore}
+                        label="收益评分"
+                        color="border-emerald-500/50"
+                      />
+                    </div>
+                    <div className="text-xs text-deep-indigo-500 px-1">
+                      评估人：{latestEval.evaluator} · {formatDateTime(latestEval.evaluatedAt)}
+                    </div>
+
+                    {latestEval.comment && (
+                      <div className="p-3 rounded-xl bg-deep-indigo-800/40 border border-neon-purple-500/10">
+                        <p className="text-xs text-deep-indigo-500 mb-1">评估意见：</p>
+                        <p className="text-sm text-deep-indigo-200">{latestEval.comment}</p>
+                      </div>
+                    )}
+
+                    {evalHistory.length > 1 && (
+                      <>
+                        <button
+                          onClick={() => setShowHistoryDraftId(showHistory ? null : draft.id)}
+                          className="w-full flex items-center justify-center gap-2 py-2 text-sm text-deep-indigo-400 hover:text-deep-indigo-200 border border-dashed border-deep-indigo-700 rounded-xl transition-colors"
+                        >
+                          <History className="w-4 h-4" />
+                          {showHistory ? '收起历史评估' : `查看历史评估（${evalHistory.length - 1}条）`}
+                          {showHistory ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                        </button>
+                        {showHistory && (
+                          <div className="space-y-2">
+                            {evalHistory.slice(1).map((evalRec) => (
+                              <div
+                                key={evalRec.id}
+                                className="p-4 rounded-xl bg-deep-indigo-900/40 border border-neon-purple-500/10 opacity-80"
+                              >
+                                <div className="flex items-center justify-between mb-3">
+                                  <div className="flex items-center gap-2">
+                                    <span
+                                      className={`tag border text-xs ${
+                                        evalRec.decision === 'approved'
+                                          ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40'
+                                          : 'bg-rose-500/20 text-rose-400 border-rose-500/40'
+                                      }`}
+                                    >
+                                      {evalRec.decision === 'approved' ? '通过' : '驳回'}
+                                    </span>
+                                  </div>
+                                  <span className="text-xs text-deep-indigo-500">
+                                    {evalRec.evaluator} · {formatDateTime(evalRec.evaluatedAt)}
+                                  </span>
+                                </div>
+                                <div className="grid grid-cols-3 gap-3 mb-2">
+                                  <div className="text-center">
+                                    <span className="text-xs text-deep-indigo-500">风险</span>
+                                    <p className="text-base font-bold text-rose-400">{evalRec.riskScore}</p>
+                                  </div>
+                                  <div className="text-center">
+                                    <span className="text-xs text-deep-indigo-500">资源</span>
+                                    <p className="text-base font-bold text-amber-400">{evalRec.resourceScore}</p>
+                                  </div>
+                                  <div className="text-center">
+                                    <span className="text-xs text-deep-indigo-500">收益</span>
+                                    <p className="text-base font-bold text-emerald-400">{evalRec.benefitScore}</p>
+                                  </div>
+                                </div>
+                                {evalRec.comment && (
+                                  <p className="text-xs text-deep-indigo-400 mt-2 pt-2 border-t border-neon-purple-500/10">
+                                    {evalRec.comment}
+                                  </p>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </>
+                    )}
                   </div>
                 ) : (
                   <div className="flex items-center gap-4 py-4 border-t border-neon-purple-500/10">
@@ -198,13 +335,6 @@ export default function EvaluationPage() {
                       <TrendingUp className="w-4 h-4" />
                       <span className="text-sm">{draft.metrics.length} 个验证指标</span>
                     </div>
-                  </div>
-                )}
-
-                {evaluation && evaluation.comment && (
-                  <div className="mt-4 p-3 rounded-xl bg-deep-indigo-800/40 border border-neon-purple-500/10">
-                    <p className="text-xs text-deep-indigo-500 mb-1">评估意见：</p>
-                    <p className="text-sm text-deep-indigo-200">{evaluation.comment}</p>
                   </div>
                 )}
               </div>
@@ -229,8 +359,11 @@ export default function EvaluationPage() {
 
       <Modal
         isOpen={showEvaluateModal && !!selectedDraft}
-        onClose={() => setShowEvaluateModal(false)}
-        title="可行性评估"
+        onClose={() => {
+          setShowEvaluateModal(false);
+          setSelectedDraftId(null);
+        }}
+        title={getEvaluationByDraftId(selectedDraftId || '') ? '重新评估' : '可行性评估'}
         size="lg"
       >
         {selectedDraft && (
@@ -239,9 +372,14 @@ export default function EvaluationPage() {
               <h3 className="text-lg font-semibold text-white mb-1">
                 {selectedDraft.title}
               </h3>
-              <p className="text-sm text-deep-indigo-400">
-                负责人：{selectedDraft.owner}
-              </p>
+              <div className="flex items-center gap-3 text-sm">
+                <span className="text-deep-indigo-400">
+                  负责人：{selectedDraft.owner || '未指定'}
+                </span>
+                <span className={`tag ${getStatusColor(selectedDraft.status)} border text-xs`}>
+                  {getStatusText(selectedDraft.status)}
+                </span>
+              </div>
             </div>
 
             <div className="space-y-6">
@@ -384,7 +522,10 @@ export default function EvaluationPage() {
 
             <div className="flex justify-end gap-3 pt-4">
               <button
-                onClick={() => setShowEvaluateModal(false)}
+                onClick={() => {
+                  setShowEvaluateModal(false);
+                  setSelectedDraftId(null);
+                }}
                 className="btn-secondary"
               >
                 取消

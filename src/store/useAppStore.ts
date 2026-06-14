@@ -36,15 +36,18 @@ interface AppState {
   
   createDraft: (draft: Omit<Draft, 'id' | 'createdAt' | 'status'> & Partial<Pick<Draft, 'status'>>) => Draft;
   createDraftFromInspiration: (inspirationId: string, draftData: Partial<Draft>) => void;
+  updateDraft: (draftId: string, updates: Partial<Omit<Draft, 'id' | 'createdAt'>>) => void;
   updateDraftStatus: (draftId: string, status: Draft['status']) => void;
   
   submitEvaluation: (draftId: string, evaluation: Omit<Evaluation, 'id' | 'draftId' | 'evaluatedAt' | 'evaluator'>) => void;
   
   submitReview: (draftId: string, review: Omit<Review, 'id' | 'draftId' | 'completedAt'>) => void;
+  updateReview: (reviewId: string, updates: Partial<Omit<Review, 'id' | 'draftId'>>) => void;
   
   getInspirationById: (id: string) => Inspiration | undefined;
   getDraftById: (id: string) => Draft | undefined;
   getEvaluationByDraftId: (draftId: string) => Evaluation | undefined;
+  getEvaluationsByDraftId: (draftId: string) => Evaluation[];
   getReviewByDraftId: (draftId: string) => Review | undefined;
 }
 
@@ -181,6 +184,14 @@ export const useAppStore = create<AppState>()(
         }));
       },
 
+      updateDraft: (draftId, updates) => {
+        set((state) => ({
+          drafts: state.drafts.map((d) =>
+            d.id === draftId ? { ...d, ...updates } : d
+          ),
+        }));
+      },
+
       submitEvaluation: (draftId, evaluation) => {
         const { currentUser } = get();
         const newEvaluation: Evaluation = {
@@ -201,14 +212,33 @@ export const useAppStore = create<AppState>()(
       },
 
       submitReview: (draftId, review) => {
-        const newReview: Review = {
-          ...review,
-          id: generateId('review'),
-          draftId,
-          completedAt: new Date().toISOString(),
-        };
+        const existingReview = get().reviews.find((r) => r.draftId === draftId);
+        if (existingReview) {
+          set((state) => ({
+            reviews: state.reviews.map((r) =>
+              r.id === existingReview.id
+                ? { ...r, ...review, completedAt: new Date().toISOString() }
+                : r
+            ),
+          }));
+        } else {
+          const newReview: Review = {
+            ...review,
+            id: generateId('review'),
+            draftId,
+            completedAt: new Date().toISOString(),
+          };
+          set((state) => ({
+            reviews: [...state.reviews, newReview],
+          }));
+        }
+      },
+
+      updateReview: (reviewId, updates) => {
         set((state) => ({
-          reviews: [...state.reviews, newReview],
+          reviews: state.reviews.map((r) =>
+            r.id === reviewId ? { ...r, ...updates, completedAt: new Date().toISOString() } : r
+          ),
         }));
       },
 
@@ -221,7 +251,19 @@ export const useAppStore = create<AppState>()(
       },
 
       getEvaluationByDraftId: (draftId) => {
-        return get().evaluations.find((e) => e.draftId === draftId);
+        const allEvals = get().evaluations.filter((e) => e.draftId === draftId);
+        if (allEvals.length === 0) return undefined;
+        return allEvals.sort(
+          (a, b) => new Date(b.evaluatedAt).getTime() - new Date(a.evaluatedAt).getTime()
+        )[0];
+      },
+
+      getEvaluationsByDraftId: (draftId) => {
+        return get()
+          .evaluations.filter((e) => e.draftId === draftId)
+          .sort(
+            (a, b) => new Date(b.evaluatedAt).getTime() - new Date(a.evaluatedAt).getTime()
+          );
       },
 
       getReviewByDraftId: (draftId) => {
